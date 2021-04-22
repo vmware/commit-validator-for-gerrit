@@ -1,0 +1,8 @@
+bazel-bin
+bazel-example*
+bazel-out
+bazel-testlogs
+*.idea
+target
+.project
+
