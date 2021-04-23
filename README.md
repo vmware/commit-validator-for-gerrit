@@ -18,26 +18,26 @@ commit-validator.config
 ```
 # Template entry definitions
 [template-entry "jira-issue"]
-    entryValue = [[A-Z]+[-][0-9]+]
+    value = [[A-Z]+[-][0-9]+]
     validateAgainstEndpoint = true
     endpointType = JIRA
     endpointName = default
 
 [template-entry "modifies-api-request"]
-    entryKey = Modifies API Request
-    entryType = boolean
+    key = Modifies API Request
+    value = boolean
 
 [template-entry "modifies-api-response"]
-    entryKey = Modifies API Response
-    entryType = boolean
+    key = Modifies API Response
+    value = boolean
 
 [template-entry "modifies-data-at-rest"]
-    entryKey = Modifies data at rest
-    entryType = boolean
+    key = Modifies data at rest
+    value = boolean
 
 [template-entry "modifies-existing-test-case"]
-    entryKey = Modifies existing test case
-    entryType = boolean
+    key = Modifies existing test case
+    value = boolean
 
 # Commit Template definitions
 [commit-template "default"]

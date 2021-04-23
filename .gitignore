@@ -5,4 +5,9 @@ bazel-testlogs
 *.idea
 target
 .project
+pkg
+.classpath
+.factorypath
+.settings
+.vscode
 
