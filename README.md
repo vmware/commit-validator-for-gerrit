@@ -7,6 +7,8 @@ A gerrit plugin to validate commits aginst predefined template rules.
 * place `commit-validator.secure.config` and `commit-validator.config` files under `etc`folder
 
 ## Configuration
+Below are the sample configuration files:
+
 commit-validator.secure.config
 ```
 [endpoint-jira "default"]

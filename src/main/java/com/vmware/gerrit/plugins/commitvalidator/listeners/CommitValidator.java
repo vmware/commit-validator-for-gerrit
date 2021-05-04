@@ -1,5 +1,6 @@
 package com.vmware.gerrit.plugins.commitvalidator.listeners;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -19,11 +20,11 @@ import com.vmware.gerrit.plugins.commitvalidator.entities.TemplateEntry;
 import com.vmware.gerrit.plugins.commitvalidator.entities.TemplateEntryType;
 
 import org.apache.commons.lang.StringUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
+import lombok.extern.slf4j.Slf4j;
+
+@Slf4j
 public class CommitValidator implements CommitValidationListener {
-    private static final Logger log = LoggerFactory.getLogger(CommitValidator.class);
 
     @Inject
     private PluginConfigFactory pluginConfigFactory;
@@ -61,30 +62,34 @@ public class CommitValidator implements CommitValidationListener {
                     templateForThisProject);
 
             // Skip validation
-            ImmutableList.of();
+            return ImmutableList.of();
         }
 
         List<TemplateEntry> commitTemplateEntries = commitTemplate.getMandatoryEntry();
         log.debug("Project: {}, commit: {} - Template entries: {}", projectName, commit,
                 commitTemplateEntries.toString());
 
+        // Get lines from message body
+        String[] messageBodyLines = parseCommitMessage(commitMessageBody);
+
         // Validate whether all fields are present in the commit message
         List<TemplateEntry> missingMandatoryFields = commitTemplateEntries.stream().filter(entry -> {
-            // Check whether both entry key and value are not present
+            // Check whether both entry key and value are not present in template
             if (StringUtils.isEmpty(entry.getKey()) && StringUtils.isEmpty(entry.getValue())) {
                 // Ignore the entry as both key and value are not present
                 return false;
             }
 
-            // Check whether key exists in the commitMessageBody
-            if (!StringUtils.isEmpty(entry.getKey()) && !commitMessageBody.contains(entry.getKey())) {
-                // Missing entry
+            // Fetch entry value from message body
+            String entryValue = getTemplateEntryDataFromCommitMessage(entry, messageBodyLines);
+
+            // Check whether entry and its value exists in commit message
+            if (StringUtils.isEmpty(entryValue)) {
+                // Either no entry key or value present
                 return true;
             }
 
             // Validate the value based on entry type
-            String entryValue = entry.getValue();
-
             // Set entry type to String if not provided
             TemplateEntryType type = null;
             if (entry.getType() == null) {
@@ -128,13 +133,10 @@ public class CommitValidator implements CommitValidationListener {
 
         String missingFileds = templateEntries.stream().map(entry -> {
             String expectedValue = entry.getValue();
-            switch (entry.getType()) {
-                case BOOLEAN:
-                    expectedValue = "true/false";
-                    break;
-                case INTEGER:
-                    expectedValue = "...,-1,0,1,...etc";
-                    break;
+            if (entry.getType() == TemplateEntryType.BOOLEAN) {
+                expectedValue = "true/false";
+            } else if (entry.getType() == TemplateEntryType.INTEGER) {
+                expectedValue = "...,-1,0,1,...etc";
             }
             return String.format("%nField: %s, Type: %s, Expected: %s, Actual: %s", entry.getName(), entry.getType(),
                     expectedValue, " - ");
@@ -143,6 +145,25 @@ public class CommitValidator implements CommitValidationListener {
 
         return String.format("%sMissing or invalid commit message fields:%n%s%s", messageBreak, missingFileds,
                 messageBreak);
+    }
+
+    /**
+     * Gets the given template entry value if it is present. Else null is returned.
+     */
+    private String getTemplateEntryDataFromCommitMessage(TemplateEntry entry, String[] commitMessageLines) {
+        return Arrays.stream(commitMessageLines).filter(message -> {
+            return message.trim().startsWith(entry.getName());
+        }).map(message -> {
+            String[] fieldParts = message.split(":");
+            return fieldParts[1];
+        }).findFirst().orElse(null);
+    }
+
+    /**
+     * Splits commit message into lines
+     */
+    private String[] parseCommitMessage(String commitMessage) {
+        return commitMessage.split(System.getProperty("line.separator"));
     }
 
     /**
