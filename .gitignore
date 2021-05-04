@@ -3,6 +3,8 @@ bazel-example*
 bazel-out
 bazel-testlogs
 *.idea
+*.iml
+bin
 target
 .project
 pkg
