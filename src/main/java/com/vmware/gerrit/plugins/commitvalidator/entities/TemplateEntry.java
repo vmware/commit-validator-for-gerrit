@@ -8,6 +8,7 @@ import lombok.Setter;
 @Setter
 @AllArgsConstructor
 public class TemplateEntry {
+    private String name;
     private String key;
     private String value;
     private TemplateEntryType type;
