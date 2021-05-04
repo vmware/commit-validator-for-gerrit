@@ -72,8 +72,7 @@ public class CommitValidatorConfig {
                 String[] optionalTemplateEntriesList = cfg.getGlobalPluginConfig(Constants.CONFIG_FILENAME_WITHOUT_EXTN)
                                 .getStringList(Constants.CONFIG_SECTION_COMMIT_TEMPLATE, templateName,
                                                 Constants.CONFIG_COMMIT_TEMPLATE_OPTIONAL_ENTRY);
-                System.out.println(">> Mandatory Template keys:" + mandatoryTemplateEntriesList.toString());
-                System.out.println(">>Optional Template keys:" + optionalTemplateEntriesList.toString());
+
                 // Fetch all template entries
                 List<TemplateEntry> mandatoryTemplateFields = Arrays.asList(mandatoryTemplateEntriesList).stream()
                                 .map(entryName -> getTemplateEntry(entryName)).collect(Collectors.toList());
