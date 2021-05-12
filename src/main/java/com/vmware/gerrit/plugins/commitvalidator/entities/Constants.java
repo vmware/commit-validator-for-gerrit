@@ -13,6 +13,7 @@ public class Constants {
     public static final String CONFIG_ENABLED = "enabled";
     public static final String CONFIG_TEMPLATE_ENTRY_KEY = "key";
     public static final String CONFIG_TEMPLATE_ENTRY_VALUE = "value";
+    public static final String CONFIG_TEMPLATE_ENTRY_SAMPLE_VALUE = "sampleValue";
     public static final String CONFIG_TEMPLATE_ENTRY_TYPE = "type";
     public static final String CONFIG_TEMPLATE_ENTRY_VALIDATE_AGAINST_ENDPOINT = "validateAgainstEndpoint";
     public static final String CONFIG_TEMPLATE_ENTRY_ENDPOINT_NAME = "endpointName";
@@ -20,4 +21,9 @@ public class Constants {
     public static final String CONFIG_COMMIT_TEMPLATE_MANDATORY_ENTRY = "mandatoryEntry";
     public static final String CONFIG_COMMIT_TEMPLATE_OPTIONAL_ENTRY = "optionalEntry";
     public static final String CONFIG_PROJECT = "project";
+
+    // Message Constants
+    public static final String LINE_BREAK_ASTERISK = "************************************************************";
+    public static final String LINE_BREAK_HYPHEN = "------------------------------------------------------------";
+    public static final String MESSAGE_MISSING_OR_INVALID_ENTRIES = "Following entries are either missing or have invalid values";
 }

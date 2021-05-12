@@ -102,12 +102,19 @@ public class CommitValidatorConfig {
                 String value = cfg.getGlobalPluginConfig(Constants.CONFIG_FILENAME_WITHOUT_EXTN).getString(
                                 Constants.CONFIG_SECTION_TEMPLATE_ENTRY, entryName,
                                 Constants.CONFIG_TEMPLATE_ENTRY_VALUE);
+
+                String sampleValue = cfg.getGlobalPluginConfig(Constants.CONFIG_FILENAME_WITHOUT_EXTN).getString(
+                                Constants.CONFIG_SECTION_TEMPLATE_ENTRY, entryName,
+                                Constants.CONFIG_TEMPLATE_ENTRY_SAMPLE_VALUE);
                 String templateEntryTypeStr = cfg.getGlobalPluginConfig(Constants.CONFIG_FILENAME_WITHOUT_EXTN)
                                 .getString(Constants.CONFIG_SECTION_TEMPLATE_ENTRY, entryName,
                                                 Constants.CONFIG_TEMPLATE_ENTRY_TYPE);
                 TemplateEntryType type = null;
                 if (StringUtils.isNotEmpty(templateEntryTypeStr)) {
                         type = TemplateEntryType.valueOf(templateEntryTypeStr.toUpperCase());
+                } else {
+                        // If type is not specified, consider it as String
+                        type = TemplateEntryType.STRING;
                 }
                 boolean validateAgainstEndpoint = cfg.getGlobalPluginConfig(Constants.CONFIG_FILENAME_WITHOUT_EXTN)
                                 .getBoolean(Constants.CONFIG_SECTION_TEMPLATE_ENTRY, entryName,
@@ -124,8 +131,8 @@ public class CommitValidatorConfig {
                                 Constants.CONFIG_SECTION_TEMPLATE_ENTRY, entryName,
                                 Constants.CONFIG_TEMPLATE_ENTRY_ENDPOINT_NAME);
 
-                return new TemplateEntry(entryName, key, value, type, validateAgainstEndpoint, endpointType,
-                                endpointName);
+                return new TemplateEntry(entryName, key, value, sampleValue, type, validateAgainstEndpoint,
+                                endpointType, endpointName);
         }
 
         /**
