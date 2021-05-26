@@ -47,53 +47,55 @@ public class CommitValidator implements CommitValidationListener {
         String commit = receiveEvent.commit.getId().toString();
 
         // Get plugin configuration
-        // TODO: read once and keep it in memory so that
-        // the processing is faster. For any config file changes, we
-        // can reload the plugin with gerrit reload command
+        // TODO: read once and keep it in memory so that the processing is faster. For
+        // any config file changes, we can reload the plugin with gerrit reload command
         CommitValidatorConfig pluginConfig = getPluginConfig();
 
-        // Check if the project of this commit is configured for validation
+        // Fetch Project rules
         ProjectRules projectRules = pluginConfig.getProjectRules(projectName, branchName);
+
+        // Skip the validation if project is not configured with any rules
         if (projectRules == null) {
-            log.info("Project: {}, commit: {} - This project is not configured with any validation rules", projectName,
-                    commit);
-
-            // Skip validation
+            log.info(
+                    "Project: {}, commit: {} - This project is not configured with any validation rules in the plugin config",
+                    projectName, commit);
             return ImmutableList.of();
         }
 
+        // Skip the validation if project is configured but not enabled for validation
         if (!projectRules.isEnabled()) {
-            log.info("Project: {}, commit: {} - This project is not enabled for validation", projectName, commit);
-
-            // Skip validation
+            log.info("Project: {}, commit: {} - This project is not enabled for validation in the plugin config",
+                    projectName, commit);
             return ImmutableList.of();
         }
-
-        log.info("Project: {}, commit: {} - Validation rules for this project: {}", projectName, commit,
+        log.debug("Project: {}, commit: {} - Project rules for this project: {}", projectName, commit,
                 projectRules.toString());
 
         // Get commit template for this project
         CommitTemplate commitTemplate = pluginConfig.getCommitTemplate(projectRules.getCommitTemplate());
-        if (commitTemplate == null) {
-            log.info("Project: {}, commit: {} - Unable to find commit template: {}", projectName, commit,
-                    projectRules.getCommitTemplate());
 
-            // Skip validation
+        // Skip the validation if no commit template is configured for this project or
+        // configured template definition is not available in the plugin config
+        if (commitTemplate == null) {
+            log.info(
+                    "Project: {}, commit: {} - Either no commit template is configured for this project or unable to find the configured commit template in the plugin config, commit template: {}",
+                    projectName, commit, projectRules.getCommitTemplate());
             return ImmutableList.of();
         }
 
         // Get mandatory entries from configured template
         List<TemplateEntry> mandatoryTemplateEntries = commitTemplate.getMandatoryEntry();
-        log.info("Project: {}, commit: {} - Template entries: {}", projectName, commit,
+        log.debug("Project: {}, commit: {} - Template mandatory entries: {}", projectName, commit,
                 mandatoryTemplateEntries.toString());
 
         // Get lines from commit message body
         String[] messageBodyLines = parseCommitMessage(commitMessageBody);
 
-        // Validate whether all template mandatory entries rules
-        // are fullfilled by the commit message
-        List<MessageEntry> validationMessageEntries = mandatoryTemplateEntries.parallelStream().filter(entry -> {
-            // Check whether both entry key and value are not present in template
+        // Validate whether all template mandatory entries rules are fullfilled by the
+        // commit message and collect all validation error entries.
+        List<MessageEntry> validationErrors = mandatoryTemplateEntries.parallelStream().filter(entry -> {
+            // Ignore the entry check if both key and value are not present in template
+            // entry definition
             return !(StringUtils.isEmpty(entry.getKey()) && StringUtils.isEmpty(entry.getValue()));
         }).map(entry -> {
             MessageEntry messageEntry = new MessageEntry();
@@ -104,66 +106,99 @@ public class CommitValidator implements CommitValidationListener {
             // Get actual value of the template entry
             String actualValue = getTemplateEntryDataFromCommitMessage(entry, messageBodyLines);
 
-            // If actual value is null, that means the field is missing.
-            // Set validation accordingly.
+            // If actual value is null, that means the field is missing. Set validation
+            // accordingly.
             if (actualValue == null) {
                 messageEntry.setEntryValidationStatus(TemplateEntryValidationStatus.MISSING_ENTRY);
                 return messageEntry;
             }
-
             messageEntry.setActualValue(actualValue);
 
             // Validate the value based on entry type
-            switch (entry.getType()) {
-                case BOOLEAN:
-                    Pattern pattern = Pattern.compile("true|false", Pattern.CASE_INSENSITIVE);
-                    Matcher matcher = pattern.matcher(actualValue);
-                    if (!matcher.find()) {
-                        messageEntry.setEntryValidationStatus(TemplateEntryValidationStatus.INVALID_VALUE);
-                        return messageEntry;
-                    }
-                    break;
-                case INTEGER:
-                    try {
-                        int intValue = Integer.parseInt(actualValue);
-                    } catch (NumberFormatException e) {
-                        messageEntry.setEntryValidationStatus(TemplateEntryValidationStatus.INVALID_VALUE);
-                        return messageEntry;
-                    }
-                    break;
-                case STRING:
-                default:
-                    if (StringUtils.isEmpty(actualValue)) {
-                        messageEntry.setEntryValidationStatus(TemplateEntryValidationStatus.MISSING_VALUE);
-                        return messageEntry;
-                    }
-
-                    Pattern valPattern = Pattern.compile(entry.getValue().trim());
-                    Matcher valMatcher = valPattern.matcher(actualValue.trim());
-                    log.info(
-                            "Project: {}, commit: {}, template entry name: {}, entry value pattern: {}, entry actual value: {}, matches: {}",
-                            projectName, commit, entry.getName(), entry.getValue(), actualValue, valMatcher.matches());
-                    if (!valMatcher.matches()) {
-                        messageEntry.setEntryValidationStatus(TemplateEntryValidationStatus.INVALID_VALUE);
-                        return messageEntry;
-                    }
+            TemplateEntryValidationStatus validationStatus = null;
+            if (StringUtils.isEmpty(actualValue)) {
+                validationStatus = TemplateEntryValidationStatus.MISSING_VALUE;
+            } else {
+                switch (entry.getType()) {
+                    case BOOLEAN:
+                        validationStatus = validateBoolEntry(actualValue);
+                        break;
+                    case INTEGER:
+                        validationStatus = validateIntEntry(actualValue);
+                        break;
+                    case STRING:
+                    default:
+                        validationStatus = validateStringEntry(entry.getValue(), actualValue);
+                }
             }
-            messageEntry.setEntryValidationStatus(TemplateEntryValidationStatus.VALID_VALUE);
+            log.info(
+                    "Project: {}, commit: {}, template entry name: {}, entry value pattern: {}, entry actual value: {}",
+                    projectName, commit, entry.getName(), entry.getValue(), actualValue);
+            messageEntry.setEntryValidationStatus(validationStatus);
             return messageEntry;
         }).filter(messageEntry -> {
             // Ignore VALID value entries
             return messageEntry.getEntryValidationStatus() != TemplateEntryValidationStatus.VALID_VALUE;
         }).collect(Collectors.toList());
 
-        if (!validationMessageEntries.isEmpty()) {
-            // Construct error message
-            String errorMessage = getMissingentriesMessage(validationMessageEntries);
+        // Construct the error message if there are validation errors
+        if (!validationErrors.isEmpty()) {
+            String errorMessage = getMissingentriesMessage(validationErrors);
 
-            // Throw
+            // Throw the validation error. This gets displayed in user's console/screen.
             CommitValidationMessage m = new CommitValidationMessage(errorMessage, true);
             throw new CommitValidationException(Constants.MESSAGE_MISSING_OR_INVALID_ENTRIES, ImmutableList.of(m));
         }
+
+        // No errors. Allow further processing of the change by Gerrit.
         return ImmutableList.of();
+    }
+
+    /**
+     * Validates boolean entry value
+     * 
+     * @param entryActualValue
+     * @return
+     */
+    private TemplateEntryValidationStatus validateBoolEntry(String entryActualValue) {
+        Pattern pattern = Pattern.compile("true|false", Pattern.CASE_INSENSITIVE);
+        Matcher matcher = pattern.matcher(entryActualValue);
+        if (!matcher.find()) {
+            return TemplateEntryValidationStatus.INVALID_VALUE;
+        }
+        return TemplateEntryValidationStatus.VALID_VALUE;
+    }
+
+    /**
+     * Validates integer entry value
+     * 
+     * @param entryActualValue
+     * @return
+     */
+    private TemplateEntryValidationStatus validateIntEntry(String entryActualValue) {
+        try {
+            Integer.parseInt(entryActualValue);
+        } catch (NumberFormatException e) {
+            return TemplateEntryValidationStatus.INVALID_VALUE;
+        }
+        return TemplateEntryValidationStatus.VALID_VALUE;
+    }
+
+    /**
+     * Validates string entry value as per entry value pattern
+     * 
+     * @param entryValuePattern
+     * @param entryActualValue
+     * @return
+     */
+    private TemplateEntryValidationStatus validateStringEntry(String entryValuePattern, String entryActualValue) {
+        Pattern valPattern = Pattern.compile(entryValuePattern.trim());
+        Matcher valMatcher = valPattern.matcher(entryActualValue.trim());
+
+        if (!valMatcher.matches()) {
+            return TemplateEntryValidationStatus.INVALID_VALUE;
+        }
+        return TemplateEntryValidationStatus.VALID_VALUE;
     }
 
     /**
@@ -181,6 +216,10 @@ public class CommitValidator implements CommitValidationListener {
 
     /**
      * Gets the given template entry value if it is present. Else null is returned.
+     * 
+     * @param entry
+     * @param commitMessageLines
+     * @return
      */
     private String getTemplateEntryDataFromCommitMessage(TemplateEntry entry, String[] commitMessageLines) {
         return Arrays.stream(commitMessageLines).filter(message -> {
@@ -193,6 +232,9 @@ public class CommitValidator implements CommitValidationListener {
 
     /**
      * Splits commit message into lines
+     * 
+     * @param commitMessage
+     * @return
      */
     private String[] parseCommitMessage(String commitMessage) {
         return commitMessage.split(System.getProperty("line.separator"));
