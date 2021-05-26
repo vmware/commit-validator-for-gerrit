@@ -19,6 +19,7 @@ import com.vmware.gerrit.plugins.commitvalidator.entities.CommitTemplate;
 import com.vmware.gerrit.plugins.commitvalidator.entities.Constants;
 import com.vmware.gerrit.plugins.commitvalidator.entities.Message;
 import com.vmware.gerrit.plugins.commitvalidator.entities.MessageEntry;
+import com.vmware.gerrit.plugins.commitvalidator.entities.ProjectRules;
 import com.vmware.gerrit.plugins.commitvalidator.entities.TemplateEntry;
 import com.vmware.gerrit.plugins.commitvalidator.entities.TemplateEntryValidationStatus;
 
@@ -52,22 +53,30 @@ public class CommitValidator implements CommitValidationListener {
         CommitValidatorConfig pluginConfig = getPluginConfig();
 
         // Check if the project of this commit is configured for validation
-        String templateForThisProject = pluginConfig.getTemplateForProject(projectName, branchName);
-        if (templateForThisProject == null) {
-            log.info("Project: {}, commit: {} - This project is not configured with any validation template",
-                    projectName, commit);
+        ProjectRules projectRules = pluginConfig.getProjectRules(projectName, branchName);
+        if (projectRules == null) {
+            log.info("Project: {}, commit: {} - This project is not configured with any validation rules", projectName,
+                    commit);
 
             // Skip validation
             return ImmutableList.of();
         }
-        log.debug("Project: {}, commit: {} - Matching validation template for this project: {}", projectName, commit,
-                templateForThisProject);
+
+        if (!projectRules.isEnabled()) {
+            log.info("Project: {}, commit: {} - This project is not enabled for validation", projectName, commit);
+
+            // Skip validation
+            return ImmutableList.of();
+        }
+
+        log.info("Project: {}, commit: {} - Validation rules for this project: {}", projectName, commit,
+                projectRules.toString());
 
         // Get commit template for this project
-        CommitTemplate commitTemplate = pluginConfig.getCommitTemplate(templateForThisProject);
+        CommitTemplate commitTemplate = pluginConfig.getCommitTemplate(projectRules.getCommitTemplate());
         if (commitTemplate == null) {
-            log.debug("Project: {}, commit: {} - Unable to find commit template: {}", projectName, commit,
-                    templateForThisProject);
+            log.info("Project: {}, commit: {} - Unable to find commit template: {}", projectName, commit,
+                    projectRules.getCommitTemplate());
 
             // Skip validation
             return ImmutableList.of();
@@ -75,7 +84,7 @@ public class CommitValidator implements CommitValidationListener {
 
         // Get mandatory entries from configured template
         List<TemplateEntry> mandatoryTemplateEntries = commitTemplate.getMandatoryEntry();
-        log.debug("Project: {}, commit: {} - Template entries: {}", projectName, commit,
+        log.info("Project: {}, commit: {} - Template entries: {}", projectName, commit,
                 mandatoryTemplateEntries.toString());
 
         // Get lines from commit message body
@@ -109,7 +118,7 @@ public class CommitValidator implements CommitValidationListener {
                 case BOOLEAN:
                     Pattern pattern = Pattern.compile("true|false", Pattern.CASE_INSENSITIVE);
                     Matcher matcher = pattern.matcher(actualValue);
-                    if (!matcher.matches()) {
+                    if (!matcher.find()) {
                         messageEntry.setEntryValidationStatus(TemplateEntryValidationStatus.INVALID_VALUE);
                         return messageEntry;
                     }
@@ -128,8 +137,12 @@ public class CommitValidator implements CommitValidationListener {
                         messageEntry.setEntryValidationStatus(TemplateEntryValidationStatus.MISSING_VALUE);
                         return messageEntry;
                     }
-                    Pattern valPattern = Pattern.compile(entry.getValue(), Pattern.CASE_INSENSITIVE);
-                    Matcher valMatcher = valPattern.matcher(actualValue);
+
+                    Pattern valPattern = Pattern.compile(entry.getValue().trim());
+                    Matcher valMatcher = valPattern.matcher(actualValue.trim());
+                    log.info(
+                            "Project: {}, commit: {}, template entry name: {}, entry value pattern: {}, entry actual value: {}, matches: {}",
+                            projectName, commit, entry.getName(), entry.getValue(), actualValue, valMatcher.matches());
                     if (!valMatcher.matches()) {
                         messageEntry.setEntryValidationStatus(TemplateEntryValidationStatus.INVALID_VALUE);
                         return messageEntry;
@@ -137,6 +150,9 @@ public class CommitValidator implements CommitValidationListener {
             }
             messageEntry.setEntryValidationStatus(TemplateEntryValidationStatus.VALID_VALUE);
             return messageEntry;
+        }).filter(messageEntry -> {
+            // Ignore VALID value entries
+            return messageEntry.getEntryValidationStatus() != TemplateEntryValidationStatus.VALID_VALUE;
         }).collect(Collectors.toList());
 
         if (!validationMessageEntries.isEmpty()) {

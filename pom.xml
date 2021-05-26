@@ -4,7 +4,7 @@
 
 
   <groupId>com.vmware.gerrit.plugins</groupId>
-  <version>3.3.0</version>
+  <version>3.1.4</version>
 
 
   <artifactId>commit-validator</artifactId>
@@ -38,6 +38,19 @@
           </archive>
         </configuration>
       </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-shade-plugin</artifactId>
+        <version>1.6</version>
+        <executions>
+          <execution>
+            <phase>package</phase>
+            <goals>
+              <goal>shade</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
 
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
@@ -68,13 +81,11 @@
       <groupId>net.rcarz</groupId>
       <artifactId>jira-client</artifactId>
       <version>0.5</version>
-      <scope>provided</scope>
     </dependency>
     <dependency>
       <groupId>org.projectlombok</groupId>
       <artifactId>lombok</artifactId>
       <version>1.18.20</version>
-      <scope>provided</scope>
     </dependency>
   </dependencies>
 </project>

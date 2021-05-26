@@ -10,9 +10,11 @@ import com.vmware.gerrit.plugins.commitvalidator.entities.CommitTemplate;
 import com.vmware.gerrit.plugins.commitvalidator.entities.Constants;
 import com.vmware.gerrit.plugins.commitvalidator.entities.EndpointType;
 import com.vmware.gerrit.plugins.commitvalidator.entities.JiraEndpoint;
+import com.vmware.gerrit.plugins.commitvalidator.entities.ProjectRules;
 import com.vmware.gerrit.plugins.commitvalidator.entities.TemplateEntry;
 import com.vmware.gerrit.plugins.commitvalidator.entities.TemplateEntryType;
 
+import org.apache.commons.lang.ArrayUtils;
 import org.apache.commons.lang.StringUtils;
 
 public class CommitValidatorConfig {
@@ -29,6 +31,10 @@ public class CommitValidatorConfig {
          * @return
          */
         public JiraEndpoint getJiraEndpointConfig(String endpointName) {
+                if (StringUtils.isEmpty(endpointName)) {
+                        return null;
+                }
+
                 // Check whether endpoint exists
                 Set<String> endpointKeys = cfg.getGlobalPluginConfig(Constants.CONFIG_FILENAME_WITHOUT_EXTN)
                                 .getNames(Constants.CONFIG_SECTION_JIRA_ENDPOINT, endpointName);
@@ -56,6 +62,10 @@ public class CommitValidatorConfig {
          * @return
          */
         public CommitTemplate getCommitTemplate(String templateName) {
+                if (StringUtils.isEmpty(templateName)) {
+                        return null;
+                }
+
                 // Check whether template exists
                 Set<String> templateKeys = cfg.getGlobalPluginConfig(Constants.CONFIG_FILENAME_WITHOUT_EXTN)
                                 .getNames(Constants.CONFIG_SECTION_COMMIT_TEMPLATE, templateName, true);
@@ -88,6 +98,10 @@ public class CommitValidatorConfig {
          * @return
          */
         public TemplateEntry getTemplateEntry(String entryName) {
+                if (StringUtils.isEmpty(entryName)) {
+                        return null;
+                }
+
                 // Check whether template entry exists
                 Set<String> templateEntryKeys = cfg.getGlobalPluginConfig(Constants.CONFIG_FILENAME_WITHOUT_EXTN)
                                 .getNames(Constants.CONFIG_SECTION_TEMPLATE_ENTRY, entryName, true);
@@ -95,6 +109,7 @@ public class CommitValidatorConfig {
                 if (templateEntryKeys.isEmpty()) {
                         return null; // Template entry doesn't exist
                 }
+
                 // Read template entry values
                 String key = cfg.getGlobalPluginConfig(Constants.CONFIG_FILENAME_WITHOUT_EXTN).getString(
                                 Constants.CONFIG_SECTION_TEMPLATE_ENTRY, entryName,
@@ -136,36 +151,56 @@ public class CommitValidatorConfig {
         }
 
         /**
-         * Fetches configured template name for given project and branch
+         * Fetches configured rules for given project and branch
          * 
          * @param projectName
          * @param branchName
          * @return
          */
-        public String getTemplateForProject(String projectName, String branchName) {
-                // Fetch all project mappings sub-sections
-                Set<String> subSections = cfg.getGlobalPluginConfig(Constants.CONFIG_FILENAME_WITHOUT_EXTN)
-                                .getSubsections(Constants.CONFIG_SECTION_PROJECT_MAPPINGS);
+        public ProjectRules getProjectRules(String projectName, String branchName) {
+                if (StringUtils.isEmpty(projectName) || StringUtils.isEmpty(branchName)) {
+                        return null;
+                }
 
-                // Looks for the project in all mappings
-                return subSections.stream().filter(subSection -> {
-                        String[] projectsList = cfg.getGlobalPluginConfig(Constants.CONFIG_FILENAME_WITHOUT_EXTN)
-                                        .getStringList(Constants.CONFIG_SECTION_PROJECT_MAPPINGS, subSection,
-                                                        Constants.CONFIG_PROJECT);
+                // Check whether project rule exists
+                Set<String> projectRuleEntries = cfg.getGlobalPluginConfig(Constants.CONFIG_FILENAME_WITHOUT_EXTN)
+                                .getNames(Constants.CONFIG_SECTION_PROJECT_RULES, projectName, true);
 
-                        long matchingProjects = Arrays.asList(projectsList).stream().filter(str -> {
-                                String[] parts = str.split("~");
-                                String project = parts[0];
-                                String branch;
-                                if (parts.length > 1) {
-                                        branch = parts[1];
-                                } else {
-                                        branch = "master";
-                                }
+                if (projectRuleEntries.isEmpty()) {
+                        return null; // Project rule entry doesn't exist
+                }
 
-                                return project.equalsIgnoreCase(projectName) && branch.equalsIgnoreCase(branchName);
-                        }).count();
-                        return matchingProjects > 0;
-                }).findFirst().orElse(null);
+                // Read project rules
+                boolean enabled = cfg.getGlobalPluginConfig(Constants.CONFIG_FILENAME_WITHOUT_EXTN).getBoolean(
+                                Constants.CONFIG_SECTION_PROJECT_RULES, projectName, Constants.CONFIG_ENABLED, true);
+                String[] branches = cfg.getGlobalPluginConfig(Constants.CONFIG_FILENAME_WITHOUT_EXTN).getStringList(
+                                Constants.CONFIG_SECTION_PROJECT_RULES, projectName,
+                                Constants.CONFIG_PROJECT_RULES_BRANCH);
+
+                // If the branches are configured and given branch is not found, return nil.
+                // If no branch is configured, consider it as for all branches of the repo.
+                if (branches != null && !Arrays.asList(branches).contains(branchName)) {
+                        return null;
+                }
+
+                String commitTemplate = cfg.getGlobalPluginConfig(Constants.CONFIG_FILENAME_WITHOUT_EXTN).getString(
+                                Constants.CONFIG_SECTION_PROJECT_RULES, projectName,
+                                Constants.CONFIG_PROJECT_RULES_COMMIT_TEMPLATE);
+                String[] skipTemplateValidationFor = ArrayUtils.nullToEmpty(
+                                cfg.getGlobalPluginConfig(Constants.CONFIG_FILENAME_WITHOUT_EXTN).getStringList(
+                                                Constants.CONFIG_SECTION_PROJECT_RULES, projectName,
+                                                Constants.CONFIG_PROJECT_RULES_SKIP_TEMPLATE_VALIDATION));
+                String[] additionalCRApprovalConditions = ArrayUtils.nullToEmpty(
+                                cfg.getGlobalPluginConfig(Constants.CONFIG_FILENAME_WITHOUT_EXTN).getStringList(
+                                                Constants.CONFIG_SECTION_PROJECT_RULES, projectName,
+                                                Constants.CONFIG_PROJECT_RULES_ADDITIONAL_CR_APPROVAL_IF));
+                String[] additionalCodeReviewApprovers = ArrayUtils.nullToEmpty(
+                                cfg.getGlobalPluginConfig(Constants.CONFIG_FILENAME_WITHOUT_EXTN).getStringList(
+                                                Constants.CONFIG_SECTION_PROJECT_RULES, projectName,
+                                                Constants.CONFIG_PROJECT_RULES_ADDITIONAL_CR_APPROVERS));
+
+                return new ProjectRules(enabled, commitTemplate, Arrays.asList(skipTemplateValidationFor),
+                                Arrays.asList(additionalCRApprovalConditions),
+                                Arrays.asList(additionalCodeReviewApprovers));
         }
 }
