@@ -1,6 +1,10 @@
 package com.vmware.gerrit.plugins.commitvalidator.entities;
 
 public class Constants {
+    private Constants() {
+        throw new IllegalStateException("Constants class");
+    }
+
     // Config constants
     public static final String CONFIG_FILENAME_WITHOUT_EXTN = "commit-validator";
     public static final String CONFIG_SECTION_JIRA_ENDPOINT = "endpoint-jira";
