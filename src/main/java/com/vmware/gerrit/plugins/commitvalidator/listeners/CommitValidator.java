@@ -47,8 +47,6 @@ public class CommitValidator implements CommitValidationListener {
         String commit = receiveEvent.commit.getId().toString();
 
         // Get plugin configuration
-        // TODO: read once and keep it in memory so that the processing is faster. For
-        // any config file changes, we can reload the plugin with gerrit reload command
         CommitValidatorConfig pluginConfig = getPluginConfig();
 
         // Fetch Project rules
