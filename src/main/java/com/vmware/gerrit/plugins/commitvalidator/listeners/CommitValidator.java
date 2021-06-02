@@ -1,11 +1,5 @@
 package com.vmware.gerrit.plugins.commitvalidator.listeners;
 
-import java.util.Arrays;
-import java.util.List;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-import java.util.stream.Collectors;
-
 import com.google.common.collect.ImmutableList;
 import com.google.gerrit.extensions.api.GerritApi;
 import com.google.gerrit.server.config.PluginConfigFactory;
@@ -15,26 +9,24 @@ import com.google.gerrit.server.git.validators.CommitValidationListener;
 import com.google.gerrit.server.git.validators.CommitValidationMessage;
 import com.google.inject.Inject;
 import com.vmware.gerrit.plugins.commitvalidator.config.CommitValidatorConfig;
-import com.vmware.gerrit.plugins.commitvalidator.entities.CommitTemplate;
-import com.vmware.gerrit.plugins.commitvalidator.entities.Constants;
-import com.vmware.gerrit.plugins.commitvalidator.entities.Message;
-import com.vmware.gerrit.plugins.commitvalidator.entities.MessageEntry;
-import com.vmware.gerrit.plugins.commitvalidator.entities.ProjectRules;
-import com.vmware.gerrit.plugins.commitvalidator.entities.TemplateEntry;
-import com.vmware.gerrit.plugins.commitvalidator.entities.TemplateEntryValidationStatus;
-
+import com.vmware.gerrit.plugins.commitvalidator.entities.*;
+import com.vmware.gerrit.plugins.commitvalidator.utils.JiraUtils;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang.StringUtils;
 
-import lombok.extern.slf4j.Slf4j;
+import java.util.Arrays;
+import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 @Slf4j
 public class CommitValidator implements CommitValidationListener {
 
     @Inject
-    private PluginConfigFactory pluginConfigFactory;
-
-    @Inject
     protected GerritApi gerritApi;
+    @Inject
+    private PluginConfigFactory pluginConfigFactory;
 
     @Override
     public List<CommitValidationMessage> onCommitReceived(CommitReceivedEvent receiveEvent)
@@ -42,6 +34,7 @@ public class CommitValidator implements CommitValidationListener {
 
         // Read patchset values
         String projectName = receiveEvent.project.getName();
+        // TODO: find a better way to handle branch names
         String branchName = receiveEvent.getBranchNameKey().branch().replaceFirst("refs/heads/", "");
         String commitMessageBody = receiveEvent.commit.getFullMessage();
         String commit = receiveEvent.commit.getId().toString();
@@ -126,7 +119,7 @@ public class CommitValidator implements CommitValidationListener {
                         break;
                     case STRING:
                     default:
-                        validationStatus = validateStringEntry(entry.getValue(), actualValue);
+                        validationStatus = validateStringEntry(entry, actualValue);
                 }
             }
             log.info(
@@ -154,7 +147,7 @@ public class CommitValidator implements CommitValidationListener {
 
     /**
      * Validates boolean entry value
-     * 
+     *
      * @param entryActualValue
      * @return
      */
@@ -169,7 +162,7 @@ public class CommitValidator implements CommitValidationListener {
 
     /**
      * Validates integer entry value
-     * 
+     *
      * @param entryActualValue
      * @return
      */
@@ -184,24 +177,42 @@ public class CommitValidator implements CommitValidationListener {
 
     /**
      * Validates string entry value as per entry value pattern
-     * 
-     * @param entryValuePattern
+     *
+     * @param entry
      * @param entryActualValue
      * @return
      */
-    private TemplateEntryValidationStatus validateStringEntry(String entryValuePattern, String entryActualValue) {
-        Pattern valPattern = Pattern.compile(entryValuePattern.trim());
+    private TemplateEntryValidationStatus validateStringEntry(TemplateEntry entry, String entryActualValue) {
+        // Validate the value as per pattern
+        Pattern valPattern = Pattern.compile(entry.getValue().trim());
         Matcher valMatcher = valPattern.matcher(entryActualValue.trim());
 
         if (!valMatcher.matches()) {
             return TemplateEntryValidationStatus.INVALID_VALUE;
+        }
+
+        if (entry.getEndpointType() != null && entry.getEndpointType() == EndpointType.JIRA) {
+            // Validate against endpoint
+            // Get plugin configuration
+            CommitValidatorConfig pluginConfig = getPluginConfig();
+            JiraEndpoint jiraEndpoint = pluginConfig.getJiraEndpointConfig(entry.getEndpointName());
+
+            JiraUtils jiraUtils = new JiraUtils(jiraEndpoint.getUrl(), jiraEndpoint.getUsername(), jiraEndpoint.getPassword());
+            boolean isJiraValid = jiraUtils.isIssueIdValid(entryActualValue);
+
+            log.info(
+                    "Project: {}, commit: {}, template entry name: {}, is Jira valid : {}", "-", "-", entry.getName(), isJiraValid);
+
+            if (!isJiraValid) {
+                return TemplateEntryValidationStatus.INVALID_VALUE;
+            }
         }
         return TemplateEntryValidationStatus.VALID_VALUE;
     }
 
     /**
      * Builds the error message when mandatory template entries are missing
-     * 
+     *
      * @return
      */
     private String getMissingentriesMessage(List<MessageEntry> validationMessageEntries) {
@@ -214,7 +225,7 @@ public class CommitValidator implements CommitValidationListener {
 
     /**
      * Gets the given template entry value if it is present. Else null is returned.
-     * 
+     *
      * @param entry
      * @param commitMessageLines
      * @return
@@ -230,7 +241,7 @@ public class CommitValidator implements CommitValidationListener {
 
     /**
      * Splits commit message into lines
-     * 
+     *
      * @param commitMessage
      * @return
      */
