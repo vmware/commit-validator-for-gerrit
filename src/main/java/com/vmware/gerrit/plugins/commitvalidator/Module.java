@@ -9,9 +9,9 @@ import com.vmware.gerrit.plugins.commitvalidator.listeners.CommitValidator;
 import com.vmware.gerrit.plugins.commitvalidator.rules.SubmitRules;
 
 public class Module extends AbstractModule {
-  @Override
-  protected void configure() {
-    DynamicSet.bind(binder(), CommitValidationListener.class).to(CommitValidator.class);
-    bind(SubmitRule.class).annotatedWith(Exports.named("commit-validator")).to(SubmitRules.class);
-  }
+    @Override
+    protected void configure() {
+        DynamicSet.bind(binder(), CommitValidationListener.class).to(CommitValidator.class);
+        bind(SubmitRule.class).annotatedWith(Exports.named("commit-validator")).to(SubmitRules.class);
+    }
 }
