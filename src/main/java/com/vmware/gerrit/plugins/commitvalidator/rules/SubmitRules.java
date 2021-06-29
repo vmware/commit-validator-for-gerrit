@@ -53,9 +53,16 @@ public class SubmitRules implements SubmitRule {
             return Optional.empty();
         }
 
-        log.info("Project: {}, commit: {} - Current Approvals {}", projectName, commit, changeData.currentApprovals().get(0).toString());
+        if (projectRules.getAdditionalCodeReviewApprovalConditions().isEmpty()) {
+            log.info(
+                    "Project: {}, commit: {} - This project is not configured with any additional approvers conditions",
+                    projectName, commit);
+            return Optional.empty();
+        }
 
-        // Get all approvers
+        List<String> additionalApprovalConditions = projectRules.getAdditionalCodeReviewApprovalConditions();
+
+        // Validate additional approvers conditions
         try {
             List<String> allAdditionalApprovers = getAllUsers(projectRules.getAdditionalCodeReviewApprovers());
 
