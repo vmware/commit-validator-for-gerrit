@@ -3,7 +3,6 @@ package com.vmware.gerrit.plugins.commitvalidator.rules;
 import com.google.gerrit.common.data.SubmitRecord;
 import com.google.gerrit.common.data.SubmitRecord.Status;
 import com.google.gerrit.extensions.api.GerritApi;
-import com.google.gerrit.extensions.common.AccountInfo;
 import com.google.gerrit.extensions.restapi.RestApiException;
 import com.google.gerrit.server.config.PluginConfigFactory;
 import com.google.gerrit.server.query.change.ChangeData;
@@ -14,7 +13,6 @@ import com.vmware.gerrit.plugins.commitvalidator.entities.ProjectRules;
 import com.vmware.gerrit.plugins.commitvalidator.utils.GerritUtils;
 import lombok.extern.slf4j.Slf4j;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -55,20 +53,31 @@ public class SubmitRules implements SubmitRule {
             return Optional.empty();
         }
 
-        // Skip the voting if project is configured to skip validation for this committer
-        if (!projectRules.getSkipTemplateValidationFor().isEmpty()) {
-            try {
-                List<String> skipValidationUsers = gerritUtils.getAllUsers(projectRules.getSkipTemplateValidationFor());
-                boolean skipValidation = skipValidationUsers.contains(changeData.getCommitter().getName());
+        // Skip the voting if project is configured to skip validation for this author/committer
+        try {
+            // For Authors
+            if (!projectRules.getSkipTemplateValidationForAuthors().isEmpty()) {
+                List<String> skipValidationUsers = gerritUtils.getAllUsers(projectRules.getSkipTemplateValidationForAuthors());
+                boolean skipValidation = skipValidationUsers.contains(changeData.getAuthor().getEmailAddress().split("@")[0]);
+                if (skipValidation) {
+                    log.info("Project: {}, commit: {}, author: {} - Skipping validation for this commit as Author is in skip list in the plugin config",
+                            projectName, commit, changeData.getAuthor().getName());
+                    return Optional.empty();
+                }
+            }
 
-                if(skipValidation) {
+            // For Committers
+            if (!projectRules.getSkipTemplateValidationForCommitters().isEmpty()) {
+                List<String> skipValidationUsers = gerritUtils.getAllUsers(projectRules.getSkipTemplateValidationForCommitters());
+                boolean skipValidation = skipValidationUsers.contains(changeData.getCommitter().getEmailAddress().split("@")[0]);
+                if (skipValidation) {
                     log.info("Project: {}, commit: {}, committer: {} - Skipping validation for this commit as Committer is in skip list in the plugin config",
                             projectName, commit, changeData.getCommitter().getName());
                     return Optional.empty();
                 }
-            } catch (RestApiException e) {
-                // TODO: handle this case
             }
+        } catch (RestApiException e) {
+            // TODO: handle this case
         }
 
         if (projectRules.getAdditionalCodeReviewApprovalConditions().isEmpty()) {

@@ -19,7 +19,6 @@ import org.apache.commons.lang.StringUtils;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -43,7 +42,8 @@ public class CommitValidator implements CommitValidationListener {
         String commitMessageBody = receiveEvent.commit.getFullMessage();
         String commitSubject = receiveEvent.commit.getShortMessage();
         String commit = receiveEvent.commit.getId().toString();
-        String committer = receiveEvent.commit.getCommitterIdent().getName();
+        String committer = receiveEvent.commit.getCommitterIdent().getEmailAddress().split("@")[0];
+        String author = receiveEvent.commit.getAuthorIdent().getEmailAddress().split("@")[0];
 
         // Get plugin configuration
         CommitValidatorConfig pluginConfig = getPluginConfig();
@@ -78,21 +78,38 @@ public class CommitValidator implements CommitValidationListener {
             return ImmutableList.of();
         }
 
-        // Skip the validation if project is configured to skip validation for this committer
-        if (!projectRules.getSkipTemplateValidationFor().isEmpty()) {
-            try {
-                GerritUtils gerritUtils = new GerritUtils(gerritApi);
-                List<String> skipValidationUsers = gerritUtils.getAllUsers(projectRules.getSkipTemplateValidationFor());
+        // Skip the validation if project is configured to skip validation for this author/committer
+        GerritUtils gerritUtils = new GerritUtils(gerritApi);
+        try {
+            // For Author
+            if (!projectRules.getSkipTemplateValidationForAuthors().isEmpty()) {
+                List<String> skipValidationUsers = gerritUtils.getAllUsers(projectRules.getSkipTemplateValidationForAuthors());
+                log.info("Project: {}, commit: {}, author: {} - skip eligible users {}", projectName, commit, author, skipValidationUsers.toString());
+                boolean skipValidation = skipValidationUsers.contains(author);
+
+                if (skipValidation) {
+                    log.info("Project: {}, commit: {}, author: {} - Skipping validation for this commit as Author is in skip list in the plugin config",
+                            projectName, commit, author);
+                    return ImmutableList.of();
+                }
+            }
+
+            // For Committer
+            if (!projectRules.getSkipTemplateValidationForCommitters().isEmpty()) {
+                List<String> skipValidationUsers = gerritUtils.getAllUsers(projectRules.getSkipTemplateValidationForCommitters());
+                log.info("Project: {}, commit: {}, committer: {} - skip eligible users {}", projectName, commit, committer, skipValidationUsers.toString());
                 boolean skipValidation = skipValidationUsers.contains(committer);
 
-                if(skipValidation) {
+
+                if (skipValidation) {
                     log.info("Project: {}, commit: {}, committer: {} - Skipping validation for this commit as Committer is in skip list in the plugin config",
                             projectName, commit, committer);
                     return ImmutableList.of();
                 }
-            } catch (RestApiException e) {
-                // TODO: handle this case
+
             }
+        } catch (RestApiException e) {
+            // TODO: handle this case
         }
 
         // Get mandatory entries from configured template

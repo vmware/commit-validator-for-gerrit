@@ -14,7 +14,8 @@ import lombok.ToString;
 public class ProjectRules {
     private boolean enabled;
     private String commitTemplate;
-    private List<String> skipTemplateValidationFor;
+    private List<String> skipTemplateValidationForAuthors;
+    private List<String> skipTemplateValidationForCommitters;
     private List<String> additionalCodeReviewApprovalConditions;
     private List<String> additionalCodeReviewApprovers;
 }
