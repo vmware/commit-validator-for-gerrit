@@ -84,9 +84,12 @@ public class CommitValidator implements CommitValidationListener {
                 GerritUtils gerritUtils = new GerritUtils(gerritApi);
                 List<String> skipValidationUsers = gerritUtils.getAllUsers(projectRules.getSkipTemplateValidationFor());
                 boolean skipValidation = skipValidationUsers.contains(committer);
-                log.info("Project: {}, commit: {}, committer: {} - Skipping validation for this commit as Committer is in skip list in the plugin config",
-                        projectName, commit, committer);
-                return ImmutableList.of();
+
+                if(skipValidation) {
+                    log.info("Project: {}, commit: {}, committer: {} - Skipping validation for this commit as Committer is in skip list in the plugin config",
+                            projectName, commit, committer);
+                    return ImmutableList.of();
+                }
             } catch (RestApiException e) {
                 // TODO: handle this case
             }

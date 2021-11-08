@@ -58,12 +58,14 @@ public class SubmitRules implements SubmitRule {
         // Skip the voting if project is configured to skip validation for this committer
         if (!projectRules.getSkipTemplateValidationFor().isEmpty()) {
             try {
-
                 List<String> skipValidationUsers = gerritUtils.getAllUsers(projectRules.getSkipTemplateValidationFor());
                 boolean skipValidation = skipValidationUsers.contains(changeData.getCommitter().getName());
-                log.info("Project: {}, commit: {}, committer: {} - Skipping validation for this commit as Committer is in skip list in the plugin config",
-                        projectName, commit, changeData.getCommitter().getName());
-                return Optional.empty();
+
+                if(skipValidation) {
+                    log.info("Project: {}, commit: {}, committer: {} - Skipping validation for this commit as Committer is in skip list in the plugin config",
+                            projectName, commit, changeData.getCommitter().getName());
+                    return Optional.empty();
+                }
             } catch (RestApiException e) {
                 // TODO: handle this case
             }
