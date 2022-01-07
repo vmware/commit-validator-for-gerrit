@@ -2,6 +2,7 @@ package com.vmware.gerrit.plugins.commitvalidator.rules;
 
 import com.google.gerrit.common.data.SubmitRecord;
 import com.google.gerrit.common.data.SubmitRecord.Status;
+import com.google.gerrit.entities.Project;
 import com.google.gerrit.extensions.api.GerritApi;
 import com.google.gerrit.extensions.common.AccountInfo;
 import com.google.gerrit.extensions.restapi.RestApiException;
@@ -27,6 +28,7 @@ public class SubmitRules implements SubmitRule {
 
     public Optional<SubmitRecord> evaluate(ChangeData changeData) {
         String projectName = changeData.project().get();
+        Project.NameKey projectNameKey = changeData.project();
         // TODO: find a better way to handle branch names
         String branchName = changeData.change().getDest().branch().replaceFirst("refs/heads/", "");
         String commit = changeData.change().getId().toString();
@@ -35,37 +37,46 @@ public class SubmitRules implements SubmitRule {
         CommitValidatorConfig pluginConfig = new CommitValidatorConfig(pluginConfigFactory);
 
         // Fetch Project rules
-        ProjectRules projectRules = pluginConfig.getProjectRules(projectName,
-                branchName);
+        ProjectRules projectRules = null;
+        try {
+            projectRules = pluginConfig.getProjectRules(projectNameKey,
+                    branchName);
+        } catch (Exception e) {
+            log.warn(
+                    "Project: {}, commit: {} - skipping the submit rules validation as there is an error while reading the validation rules from plugin config: {}",
+                    projectName, commit, e.getMessage());
+        }
 
         // Skip the voting if project is not configured with any rules
         if (projectRules == null) {
-            log.info(
-                    "Project: {}, commit: {} - This project is not configured with any validation rules in the plugin config",
+            log.debug(
+                    "Project: {}, commit: {} - skipping the submit rules validation as the project is not configured with any validation rules",
                     projectName, commit);
             return Optional.empty();
         }
 
         // Skip the voting if project is configured but not enabled for validation
         if (!projectRules.isEnabled()) {
-            log.info("Project: {}, commit: {} - This project is not enabled for validation in the plugin config",
+            log.debug("Project: {}, commit: {} - skipping the submit rules validation as the project is not enabled for validation",
                     projectName, commit);
             return Optional.empty();
         }
 
         if (projectRules.getAdditionalCodeReviewApprovalConditions().isEmpty()) {
-            log.info(
-                    "Project: {}, commit: {} - This project is not configured with any additional approvers conditions",
+            log.debug(
+                    "Project: {}, commit: {} - skipping the submit rules validation as the project is not configured with any additional approvers conditions",
                     projectName, commit);
             return Optional.empty();
         }
+
+        log.info("Project: {}, commit: {} - validating the submit rules...",
+                projectName, commit);
 
         List<String> additionalApprovalConditions = projectRules.getAdditionalCodeReviewApprovalConditions();
 
         // Validate additional approvers conditions
         try {
             List<String> allAdditionalApprovers = getAllUsers(projectRules.getAdditionalCodeReviewApprovers());
-
             log.info("Project: {}, commit: {} - all additional Approvers {}", projectName, commit, allAdditionalApprovers);
 
             List<String> currentCRApprovers = changeData.
@@ -85,7 +96,6 @@ public class SubmitRules implements SubmitRule {
             }).filter(username -> {
                 return username != null;
             }).collect(Collectors.toList());
-
             log.info("Project: {}, commit: {} - current Approvers {}", projectName, commit, currentCRApprovers);
 
             boolean additionalApprovalDone = currentCRApprovers.stream().anyMatch(element -> allAdditionalApprovers.contains(element));
@@ -124,7 +134,7 @@ public class SubmitRules implements SubmitRule {
 
         for (String additionalApprover : additionalCRApprovers) {
 
-            String[] userGroupIdentifier = additionalApprover.split(" ");
+            String[] userGroupIdentifier = additionalApprover.split("~");
             if (userGroupIdentifier[0].equals("group")) {
                 String groupName = userGroupIdentifier[1];
 

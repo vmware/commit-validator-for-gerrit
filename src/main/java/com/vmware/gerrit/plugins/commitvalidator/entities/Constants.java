@@ -7,6 +7,7 @@ public class Constants {
     public static final String CONFIG_SECTION_TEMPLATE_ENTRY = "template-entry";
     public static final String CONFIG_SECTION_COMMIT_TEMPLATE = "commit-template";
     public static final String CONFIG_SECTION_PROJECT_RULES = "project-rules";
+    public static final String CONFIG_PROJECT_CONFIG_PLUGIN_SUB_SECTION = "commit-validator";
     public static final String CONFIG_PROJECT_RULES_BRANCH = "branch";
     public static final String CONFIG_PROJECT_RULES_COMMIT_TEMPLATE = "commitTemplate";
     public static final String CONFIG_PROJECT_RULES_SKIP_TEMPLATE_VALIDATION = "skipTemplateValidationFor";
@@ -20,7 +21,7 @@ public class Constants {
     public static final String CONFIG_TEMPLATE_ENTRY_KEY = "key";
     public static final String CONFIG_TEMPLATE_ENTRY_VALUE = "value";
     public static final String CONFIG_TEMPLATE_ENTRY_SAMPLE_VALUE = "sampleValue";
-    public static final String CONFIG_TEMPLATE_ENTRY_REJECTED_STATUS = "rejectedStatus";
+    public static final String CONFIG_TEMPLATE_ENTRY_ALLOWED_STATUS = "allowedStatus";
     public static final String CONFIG_TEMPLATE_ENTRY_TYPE = "type";
     public static final String CONFIG_TEMPLATE_ENTRY_VALIDATE_VAL_AGAINST_ENDPOINT = "validateAgainstEndpoint";
     public static final String CONFIG_TEMPLATE_ENTRY_ENDPOINT_NAME = "endpointName";

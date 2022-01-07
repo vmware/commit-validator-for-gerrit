@@ -1,6 +1,7 @@
 package com.vmware.gerrit.plugins.commitvalidator.listeners;
 
 import com.google.common.collect.ImmutableList;
+import com.google.gerrit.entities.Project;
 import com.google.gerrit.extensions.api.GerritApi;
 import com.google.gerrit.server.config.PluginConfigFactory;
 import com.google.gerrit.server.events.CommitReceivedEvent;
@@ -12,6 +13,7 @@ import com.vmware.gerrit.plugins.commitvalidator.config.CommitValidatorConfig;
 import com.vmware.gerrit.plugins.commitvalidator.entities.*;
 import com.vmware.gerrit.plugins.commitvalidator.utils.JiraUtils;
 import lombok.extern.slf4j.Slf4j;
+import net.rcarz.jiraclient.JiraException;
 import org.apache.commons.lang.StringUtils;
 
 import java.util.ArrayList;
@@ -35,6 +37,7 @@ public class CommitValidator implements CommitValidationListener {
 
         // Read patchset values
         String projectName = receiveEvent.project.getName();
+        Project.NameKey projectNameKey = receiveEvent.project.getNameKey();
         // TODO: find a better way to handle branch names
         String branchName = receiveEvent.getBranchNameKey().branch().replaceFirst("refs/heads/", "");
         String commitMessageBody = receiveEvent.commit.getFullMessage();
@@ -45,22 +48,35 @@ public class CommitValidator implements CommitValidationListener {
         CommitValidatorConfig pluginConfig = getPluginConfig();
 
         // Fetch Project rules
-        ProjectRules projectRules = pluginConfig.getProjectRules(projectName, branchName);
+        ProjectRules projectRules = null;
+        try {
+            projectRules = pluginConfig.getProjectRules(projectNameKey, branchName);
+        } catch (Exception e) {
+            log.warn(
+                    "Project: {}, commit: {} - skipping the commit validation as there is an error while reading the validation rules from plugin config: {}",
+                    projectName, commit, e.getMessage());
+
+            // Do not block if there are config issues
+            return ImmutableList.of();
+        }
 
         // Skip the validation if project is not configured with any rules
         if (projectRules == null) {
-            log.info(
-                    "Project: {}, commit: {} - This project is not configured with any validation rules in the plugin config",
+            log.debug(
+                    "Project: {}, commit: {} - skipping the commit validation as the project is not configured with any validation rules",
                     projectName, commit);
             return ImmutableList.of();
         }
 
         // Skip the validation if project is configured but not enabled for validation
         if (!projectRules.isEnabled()) {
-            log.info("Project: {}, commit: {} - This project is not enabled for validation in the plugin config",
+            log.debug("Project: {}, commit: {} - skipping the commit validation as the project is not enabled for validation",
                     projectName, commit);
             return ImmutableList.of();
         }
+
+        log.info("Project: {}, commit: {} - validating the commit validation rules...",
+                projectName, commit);
 
         // Get commit template for this project
         CommitTemplate commitTemplate = pluginConfig.getCommitTemplate(projectRules.getCommitTemplate());
@@ -68,8 +84,8 @@ public class CommitValidator implements CommitValidationListener {
         // Skip the validation if no commit template is configured for this project or
         // configured template definition is not available in the plugin config
         if (commitTemplate == null) {
-            log.info(
-                    "Project: {}, commit: {} - Either no commit template is configured for this project or unable to find the configured one in the plugin config, commit template: {}",
+            log.debug(
+                    "Project: {}, commit: {} - either no commit template is configured for this project or unable to find the configured one in the plugin config, commit template: {}",
                     projectName, commit, projectRules.getCommitTemplate());
             return ImmutableList.of();
         }
@@ -119,8 +135,9 @@ public class CommitValidator implements CommitValidationListener {
                 messageEntry.setActualValues(Arrays.asList(keyValue));
 
                 // Validate the value and set to message
-                TemplateEntryValidationStatus validationStatus = validateKeyValPairEntryValue(entry, keyValue);
-                messageEntry.setEntryValidationStatus(validationStatus);
+                TemplateEntryValidationResult validationResult = validateKeyValPairEntryValue(entry, keyValue);
+                messageEntry.setEntryValidationStatus(validationResult.getStatus());
+                messageEntry.setValidationMessage(validationResult.getMessage());
             } else {
                 // Extract matching values
                 List<String> matchingValues = new ArrayList<>();
@@ -142,20 +159,21 @@ public class CommitValidator implements CommitValidationListener {
                 log.info(
                         "Project: {}, commit: {}, matching values:{}", projectName, commit, matchingValues);
 
-                // Validate all matching values and extract valid values
-                List<String> validValuesFromMatched = matchingValues.stream().filter(s -> {
+                // Validate all matching values and extract invalid values
+                List<TemplateEntryValidationResult> invalidValuesFromMatched = matchingValues.stream().map(s -> {
                     log.info(
                             "Project: {}, commit: {}, validating the value:{}", projectName, commit, s);
-                    TemplateEntryValidationStatus validationStatus = validateStringEntry(entry, s);
-                    return validationStatus == TemplateEntryValidationStatus.VALID_VALUE;
-                }).collect(Collectors.toList());
+                    return validateStringEntry(entry, s);
+                }).filter(validationResult -> validationResult.getStatus() == TemplateEntryValidationStatus.INVALID_VALUE).collect(Collectors.toList());
 
-                // Set the validation status of entry as VALID if at least
-                // one value is valid
-                if (validValuesFromMatched.size() > 0) {
-                    messageEntry.setEntryValidationStatus(TemplateEntryValidationStatus.VALID_VALUE);
-                } else {
+                // Set the validation status of entry as INVALID if at least
+                // one value is invalid
+                if (invalidValuesFromMatched.size() > 0) {
                     messageEntry.setEntryValidationStatus(TemplateEntryValidationStatus.INVALID_VALUE);
+                    List<String> invalidMessages = invalidValuesFromMatched.stream().map(res -> res.getMessage()).collect(Collectors.toList());
+                    messageEntry.setValidationMessage(invalidMessages.toString());
+                } else {
+                    messageEntry.setEntryValidationStatus(TemplateEntryValidationStatus.VALID_VALUE);
                 }
             }
             log.info(
@@ -187,7 +205,7 @@ public class CommitValidator implements CommitValidationListener {
      * @param keyValue
      * @return
      */
-    private TemplateEntryValidationStatus validateKeyValPairEntryValue(TemplateEntry entry, String keyValue) {
+    private TemplateEntryValidationResult validateKeyValPairEntryValue(TemplateEntry entry, String keyValue) {
         switch (entry.getType()) {
             case BOOLEAN:
                 return validateBoolEntry(keyValue);
@@ -205,13 +223,13 @@ public class CommitValidator implements CommitValidationListener {
      * @param entryActualValue
      * @return
      */
-    private TemplateEntryValidationStatus validateBoolEntry(String entryActualValue) {
+    private TemplateEntryValidationResult validateBoolEntry(String entryActualValue) {
         Pattern pattern = Pattern.compile("true|false", Pattern.CASE_INSENSITIVE);
         Matcher matcher = pattern.matcher(entryActualValue);
         if (!matcher.find()) {
-            return TemplateEntryValidationStatus.INVALID_VALUE;
+            return new TemplateEntryValidationResult(TemplateEntryValidationStatus.INVALID_VALUE, "Not a boolean value");
         }
-        return TemplateEntryValidationStatus.VALID_VALUE;
+        return new TemplateEntryValidationResult(TemplateEntryValidationStatus.VALID_VALUE, "");
     }
 
     /**
@@ -220,13 +238,13 @@ public class CommitValidator implements CommitValidationListener {
      * @param entryActualValue
      * @return
      */
-    private TemplateEntryValidationStatus validateIntEntry(String entryActualValue) {
+    private TemplateEntryValidationResult validateIntEntry(String entryActualValue) {
         try {
             Integer.parseInt(entryActualValue);
         } catch (NumberFormatException e) {
-            return TemplateEntryValidationStatus.INVALID_VALUE;
+            return new TemplateEntryValidationResult(TemplateEntryValidationStatus.INVALID_VALUE, "Not a number value");
         }
-        return TemplateEntryValidationStatus.VALID_VALUE;
+        return new TemplateEntryValidationResult(TemplateEntryValidationStatus.VALID_VALUE, "");
     }
 
     /**
@@ -236,13 +254,15 @@ public class CommitValidator implements CommitValidationListener {
      * @param entryActualValue
      * @return
      */
-    private TemplateEntryValidationStatus validateStringEntry(TemplateEntry entry, String entryActualValue) {
+    private TemplateEntryValidationResult validateStringEntry(TemplateEntry entry, String entryActualValue) {
+        TemplateEntryValidationResult result = new TemplateEntryValidationResult();
+
         // Validate the value as per pattern
         Pattern valPattern = Pattern.compile(entry.getValue().trim());
         Matcher valMatcher = valPattern.matcher(entryActualValue.trim());
 
         if (!valMatcher.matches()) {
-            return TemplateEntryValidationStatus.INVALID_VALUE;
+            return new TemplateEntryValidationResult(TemplateEntryValidationStatus.INVALID_VALUE, String.format("No values matching '%s' format", entry.getValue()));
         }
 
         log.info(">>validate value against endpoint {}", entry.isValidateValueAgainstEndpoint());
@@ -251,7 +271,7 @@ public class CommitValidator implements CommitValidationListener {
         if (entry.isValidateValueAgainstEndpoint()) {
             if (entry.getEndpointType() == null || StringUtils.isEmpty(entry.getEndpointName())) {
                 log.warn("Unable to validate the value of template entry {} against endpoint as endpoint details are missing", entry.getName());
-                return TemplateEntryValidationStatus.VALID_VALUE;
+                return new TemplateEntryValidationResult(TemplateEntryValidationStatus.VALID_VALUE, "No endpoint details in config");
             }
 
             log.info(">>validating based on type");
@@ -263,10 +283,10 @@ public class CommitValidator implements CommitValidationListener {
                 default:
                     log.warn("Unable to validate the value of template entry {} against endpoint as endpoint type {} is unknown", entry.getName(), entry.getEndpointType());
                     // Return as Valid as we do not know what to validate here
-                    return TemplateEntryValidationStatus.VALID_VALUE;
+                    return new TemplateEntryValidationResult(TemplateEntryValidationStatus.VALID_VALUE, "Unknown endpoint type");
             }
         }
-        return TemplateEntryValidationStatus.VALID_VALUE;
+        return new TemplateEntryValidationResult(TemplateEntryValidationStatus.VALID_VALUE, "");
     }
 
     /**
@@ -276,7 +296,9 @@ public class CommitValidator implements CommitValidationListener {
      * @param value
      * @return
      */
-    private TemplateEntryValidationStatus validateAgainstJira(TemplateEntry entry, String value) {
+    private TemplateEntryValidationResult validateAgainstJira(TemplateEntry entry, String value) {
+        TemplateEntryValidationResult result = new TemplateEntryValidationResult(TemplateEntryValidationStatus.VALID_VALUE, "");
+
         // Remove any unwanted braces from Jira issue ID
         // In general this is not needed but to handle VMware use cases, this is added.
         String actualValue = value.replaceAll("[\\[\\]]", "");
@@ -285,13 +307,21 @@ public class CommitValidator implements CommitValidationListener {
         CommitValidatorConfig pluginConfig = getPluginConfig();
         JiraEndpoint jiraEndpoint = pluginConfig.getJiraEndpointConfig(entry.getEndpointName());
         JiraUtils jiraUtils = new JiraUtils(jiraEndpoint.getUrl(), jiraEndpoint.getUsername(), jiraEndpoint.getPassword());
-        boolean isJiraValid = jiraUtils.isIssueIdValid(actualValue, entry.getRejectedStatus());
+        boolean isJiraValid = false;
+        try {
+            isJiraValid = jiraUtils.isIssueIdValid(actualValue, entry.getAllowedStatuses());
+        } catch (InvalidEntryException | JiraException e) {
+            // TODO: Handle Jira down issues
+            result.setStatus(TemplateEntryValidationStatus.INVALID_VALUE);
+            result.setMessage(e.getMessage());
+            return result;
+        }
 
         log.info(">> Jira {} valid? {}", actualValue, isJiraValid);
         if (!isJiraValid) {
-            return TemplateEntryValidationStatus.INVALID_VALUE;
+            result.setStatus(TemplateEntryValidationStatus.INVALID_VALUE);
         }
-        return TemplateEntryValidationStatus.VALID_VALUE;
+        return result;
     }
 
     /**
@@ -302,7 +332,7 @@ public class CommitValidator implements CommitValidationListener {
     private String getMissingentriesMessage(List<MessageEntry> validationMessageEntries) {
         Message validationMsg = new Message(validationMessageEntries);
 
-        return String.format("%n%s%n\tINVALID COMMIT MESSAGE\t%n%s%n%s%n%s%n%n%s%n%n%s", Constants.LINE_BREAK_ASTERISK,
+        return String.format("%n%s%n\tINVALID COMMIT\t%n%s%n%s%n%s%n%n%s%n%n%s", Constants.LINE_BREAK_ASTERISK,
                 Constants.LINE_BREAK_ASTERISK, Constants.MESSAGE_MISSING_OR_INVALID_ENTRIES,
                 Constants.LINE_BREAK_HYPHEN, validationMsg.toString(), Constants.LINE_BREAK_ASTERISK);
     }
