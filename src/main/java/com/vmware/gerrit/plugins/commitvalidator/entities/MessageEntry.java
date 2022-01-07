@@ -17,5 +17,6 @@ public class MessageEntry {
     private TemplateEntryKind kind;
     private TemplateEntryType entryType;
     private TemplateEntryValidationStatus entryValidationStatus;
+    private String validationMessage;
     private String example;
 }

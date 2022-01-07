@@ -86,17 +86,17 @@ public class Message {
     private String getValidationStatusStr(MessageEntry entry) {
         switch (entry.getEntryValidationStatus()) {
             case MISSING_KEY:
-                return "MISSING key and value";
+                return "Add MISSING entry";
             case MISSING_VALUE:
                 if (entry.getKind() == TemplateEntryKind.KEY_VAL) {
-                    return "Key is present but value is MISSING";
+                    return "Add MISSING entry value";
                 }
-                return "MISSING Value";
+                return "Add MISSING value";
             case INVALID_VALUE:
                 if (entry.getKind() == TemplateEntryKind.KEY_VAL) {
-                    return "Key is present but value is INVALID";
+                    return "Provide VALID entry value. Error:" + entry.getValidationMessage();
                 }
-                return "INVALID Value";
+                return "Provide VALID value. Error:" + entry.getValidationMessage();
         }
         return "";
     }
