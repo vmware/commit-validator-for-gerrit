@@ -24,11 +24,8 @@ public class JiraUtils {
 
         try {
             jira.getRestClient().get(url);
-        } catch (RestException e) {
-            e.printStackTrace();
-        } catch (IOException e) {
-            e.printStackTrace();
-        } catch (URISyntaxException e) {
+        } catch (RestException | IOException|URISyntaxException e) {
+          //  TODO: handle it
             e.printStackTrace();
         }
 

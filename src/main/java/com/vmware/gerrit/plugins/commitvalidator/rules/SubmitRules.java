@@ -88,6 +88,7 @@ public class SubmitRules implements SubmitRule {
                 }
             }
         } catch (RestApiException e) {
+            // TODO: handle it
             e.printStackTrace();
         }
 

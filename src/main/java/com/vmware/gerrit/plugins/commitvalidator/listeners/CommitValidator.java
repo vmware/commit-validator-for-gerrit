@@ -113,6 +113,7 @@ public class CommitValidator implements CommitValidationListener {
 
             }
         } catch (RestApiException e) {
+            // TODO: handle it
             e.printStackTrace();
         }
 
@@ -156,7 +157,7 @@ public class CommitValidator implements CommitValidationListener {
             messageEntry.setEntryType(entry.getType());
             messageEntry.setExample(entry.getExampleValue());
 
-            // Extract the values for the template entry base on its kind
+            // Extract the values for the template entry based on its kind
             TemplateEntryKind entryKind = entry.getKind();
 
             if (entryKind == TemplateEntryKind.KEY_VAL) {
