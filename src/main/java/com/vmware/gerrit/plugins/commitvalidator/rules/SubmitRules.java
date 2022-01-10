@@ -12,6 +12,7 @@ import com.google.gerrit.server.rules.SubmitRule;
 import com.google.inject.Inject;
 import com.vmware.gerrit.plugins.commitvalidator.config.CommitValidatorConfig;
 import com.vmware.gerrit.plugins.commitvalidator.entities.ProjectRules;
+import com.vmware.gerrit.plugins.commitvalidator.utils.GerritUtils;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
@@ -32,6 +33,7 @@ public class SubmitRules implements SubmitRule {
         // TODO: find a better way to handle branch names
         String branchName = changeData.change().getDest().branch().replaceFirst("refs/heads/", "");
         String commit = changeData.change().getId().toString();
+        GerritUtils gerritUtils = new GerritUtils(gerritApi);
 
         // Get plugin configuration
         CommitValidatorConfig pluginConfig = new CommitValidatorConfig(pluginConfigFactory);
@@ -49,7 +51,7 @@ public class SubmitRules implements SubmitRule {
 
         // Skip the voting if project is not configured with any rules
         if (projectRules == null) {
-            log.debug(
+            log.info(
                     "Project: {}, commit: {} - skipping the submit rules validation as the project is not configured with any validation rules",
                     projectName, commit);
             return Optional.empty();
@@ -57,13 +59,40 @@ public class SubmitRules implements SubmitRule {
 
         // Skip the voting if project is configured but not enabled for validation
         if (!projectRules.isEnabled()) {
-            log.debug("Project: {}, commit: {} - skipping the submit rules validation as the project is not enabled for validation",
+            log.info("Project: {}, commit: {} - skipping the submit rules validation as the project is not enabled for validation",
                     projectName, commit);
             return Optional.empty();
         }
 
+        // Skip the voting if project is configured to skip validation for this author/committer
+        try {
+            // For Authors
+            if (!projectRules.getSkipTemplateValidationForAuthors().isEmpty()) {
+                List<String> skipValidationUsers = gerritUtils.getAllUsers(projectRules.getSkipTemplateValidationForAuthors());
+                boolean skipValidation = skipValidationUsers.contains(changeData.getAuthor().getEmailAddress().split("@")[0]);
+                if (skipValidation) {
+                    log.info("Project: {}, commit: {}, author: {} - Skipping validation for this commit as Author is in skip list in the plugin config",
+                            projectName, commit, changeData.getAuthor().getName());
+                    return Optional.empty();
+                }
+            }
+
+            // For Committers
+            if (!projectRules.getSkipTemplateValidationForCommitters().isEmpty()) {
+                List<String> skipValidationUsers = gerritUtils.getAllUsers(projectRules.getSkipTemplateValidationForCommitters());
+                boolean skipValidation = skipValidationUsers.contains(changeData.getCommitter().getEmailAddress().split("@")[0]);
+                if (skipValidation) {
+                    log.info("Project: {}, commit: {}, committer: {} - Skipping validation for this commit as Committer is in skip list in the plugin config",
+                            projectName, commit, changeData.getCommitter().getName());
+                    return Optional.empty();
+                }
+            }
+        } catch (RestApiException e) {
+            e.printStackTrace();
+        }
+
         if (projectRules.getAdditionalCodeReviewApprovalConditions().isEmpty()) {
-            log.debug(
+            log.info(
                     "Project: {}, commit: {} - skipping the submit rules validation as the project is not configured with any additional approvers conditions",
                     projectName, commit);
             return Optional.empty();
@@ -76,7 +105,7 @@ public class SubmitRules implements SubmitRule {
 
         // Validate additional approvers conditions
         try {
-            List<String> allAdditionalApprovers = getAllUsers(projectRules.getAdditionalCodeReviewApprovers());
+            List<String> allAdditionalApprovers = gerritUtils.getAllUsers(projectRules.getAdditionalCodeReviewApprovers());
             log.info("Project: {}, commit: {} - all additional Approvers {}", projectName, commit, allAdditionalApprovers);
 
             List<String> currentCRApprovers = changeData.
@@ -126,31 +155,5 @@ public class SubmitRules implements SubmitRule {
         SubmitRecord record = new SubmitRecord();
         record.status = status;
         return Optional.of(record);
-    }
-
-    private List<String> getAllUsers(List<String> additionalCRApprovers) throws RestApiException {
-        // Get all users of the
-        List<String> allUsernames = new ArrayList<>();
-
-        for (String additionalApprover : additionalCRApprovers) {
-
-            String[] userGroupIdentifier = additionalApprover.split("~");
-            if (userGroupIdentifier[0].equals("group")) {
-                String groupName = userGroupIdentifier[1];
-
-                List<AccountInfo> members = null;
-
-                members = gerritApi.groups().id(groupName).members();
-
-                List<String> membersUsernames = members.parallelStream().map(accountInfo -> {
-                    return accountInfo.username;
-                }).collect(Collectors.toList());
-                allUsernames.addAll(membersUsernames);
-            } else if (userGroupIdentifier[0].equals("user")) {
-                String username = userGroupIdentifier[1];
-                allUsernames.add(gerritApi.accounts().id(username).get().username);
-            }
-        }
-        return allUsernames;
     }
 }

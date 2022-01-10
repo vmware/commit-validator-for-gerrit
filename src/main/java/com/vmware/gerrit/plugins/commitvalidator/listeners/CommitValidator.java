@@ -3,6 +3,7 @@ package com.vmware.gerrit.plugins.commitvalidator.listeners;
 import com.google.common.collect.ImmutableList;
 import com.google.gerrit.entities.Project;
 import com.google.gerrit.extensions.api.GerritApi;
+import com.google.gerrit.extensions.restapi.RestApiException;
 import com.google.gerrit.server.config.PluginConfigFactory;
 import com.google.gerrit.server.events.CommitReceivedEvent;
 import com.google.gerrit.server.git.validators.CommitValidationException;
@@ -11,6 +12,7 @@ import com.google.gerrit.server.git.validators.CommitValidationMessage;
 import com.google.inject.Inject;
 import com.vmware.gerrit.plugins.commitvalidator.config.CommitValidatorConfig;
 import com.vmware.gerrit.plugins.commitvalidator.entities.*;
+import com.vmware.gerrit.plugins.commitvalidator.utils.GerritUtils;
 import com.vmware.gerrit.plugins.commitvalidator.utils.JiraUtils;
 import lombok.extern.slf4j.Slf4j;
 import net.rcarz.jiraclient.JiraException;
@@ -19,6 +21,7 @@ import org.apache.commons.lang.StringUtils;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -43,6 +46,8 @@ public class CommitValidator implements CommitValidationListener {
         String commitMessageBody = receiveEvent.commit.getFullMessage();
         String commitSubject = receiveEvent.commit.getShortMessage();
         String commit = receiveEvent.commit.getId().toString();
+        String committer = receiveEvent.commit.getCommitterIdent().getEmailAddress().split("@")[0];
+        String author = receiveEvent.commit.getAuthorIdent().getEmailAddress().split("@")[0];
 
         // Get plugin configuration
         CommitValidatorConfig pluginConfig = getPluginConfig();
@@ -62,17 +67,53 @@ public class CommitValidator implements CommitValidationListener {
 
         // Skip the validation if project is not configured with any rules
         if (projectRules == null) {
-            log.debug(
+            log.info(
                     "Project: {}, commit: {} - skipping the commit validation as the project is not configured with any validation rules",
-                    projectName, commit);
+                    projectNameKey.toString(), commit);
             return ImmutableList.of();
         }
 
         // Skip the validation if project is configured but not enabled for validation
         if (!projectRules.isEnabled()) {
-            log.debug("Project: {}, commit: {} - skipping the commit validation as the project is not enabled for validation",
+            log.info("Project: {}, commit: {} - skipping the commit validation as the project is not enabled for validation",
                     projectName, commit);
             return ImmutableList.of();
+        }
+
+        // Skip the validation if project is configured to skip validation for this author/committer
+        GerritUtils gerritUtils = new GerritUtils(gerritApi);
+        try {
+            // For Author
+            log.info("Project: {}, commit: {}, author: {} - checking skip eligibility for Author with config: {}", projectName, commit, author,projectRules.getSkipTemplateValidationForAuthors());
+            if (!projectRules.getSkipTemplateValidationForAuthors().isEmpty()) {
+                List<String> skipValidationUsers = gerritUtils.getAllUsers(projectRules.getSkipTemplateValidationForAuthors());
+                log.info("Project: {}, commit: {}, author: {} - skip eligible users {}", projectName, commit, author, skipValidationUsers.toString());
+                boolean skipValidation = skipValidationUsers.contains(author);
+
+                if (skipValidation) {
+                    log.info("Project: {}, commit: {}, author: {} - Skipping validation for this commit as Author is in skip list in the plugin config",
+                            projectName, commit, author);
+                    return ImmutableList.of();
+                }
+            }
+
+            // For Committer
+            log.info("Project: {}, commit: {}, committer: {} - checking skip eligibility for Committer with config: {}", projectName, commit, author,projectRules.getSkipTemplateValidationForCommitters());
+            if (!projectRules.getSkipTemplateValidationForCommitters().isEmpty()) {
+                List<String> skipValidationUsers = gerritUtils.getAllUsers(projectRules.getSkipTemplateValidationForCommitters());
+                log.info("Project: {}, commit: {}, committer: {} - skip eligible users {}", projectName, commit, committer, skipValidationUsers.toString());
+                boolean skipValidation = skipValidationUsers.contains(committer);
+
+
+                if (skipValidation) {
+                    log.info("Project: {}, commit: {}, committer: {} - Skipping validation for this commit as Committer is in skip list in the plugin config",
+                            projectName, commit, committer);
+                    return ImmutableList.of();
+                }
+
+            }
+        } catch (RestApiException e) {
+            e.printStackTrace();
         }
 
         log.info("Project: {}, commit: {} - validating the commit validation rules...",
@@ -84,7 +125,7 @@ public class CommitValidator implements CommitValidationListener {
         // Skip the validation if no commit template is configured for this project or
         // configured template definition is not available in the plugin config
         if (commitTemplate == null) {
-            log.debug(
+            log.info(
                     "Project: {}, commit: {} - either no commit template is configured for this project or unable to find the configured one in the plugin config, commit template: {}",
                     projectName, commit, projectRules.getCommitTemplate());
             return ImmutableList.of();
