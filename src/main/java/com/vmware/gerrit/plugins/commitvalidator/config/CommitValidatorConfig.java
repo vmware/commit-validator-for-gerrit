@@ -187,14 +187,17 @@ public class CommitValidatorConfig {
         }
 
         String commitTemplate = pluginConfig.getString(Constants.CONFIG_PROJECT_RULES_COMMIT_TEMPLATE);
-        String[] skipTemplateValidationFor = ArrayUtils.nullToEmpty(
-                pluginConfig.getStringList(Constants.CONFIG_PROJECT_RULES_SKIP_TEMPLATE_VALIDATION));
+        String[] skipTemplateValidationForAuthors = ArrayUtils.nullToEmpty(
+                pluginConfig.getStringList(Constants.CONFIG_PROJECT_RULES_SKIP_TEMPLATE_VALIDATION_AUTHOR));
+        String[] skipTemplateValidationForCommitters = ArrayUtils.nullToEmpty(
+                pluginConfig.getStringList(Constants.CONFIG_PROJECT_RULES_SKIP_TEMPLATE_VALIDATION_COMMITTER));
         String[] additionalCRApprovalConditions = ArrayUtils.nullToEmpty(
                 pluginConfig.getStringList(Constants.CONFIG_PROJECT_RULES_ADDITIONAL_CR_APPROVAL_IF));
         String[] additionalCodeReviewApprovers = ArrayUtils.nullToEmpty(
                 pluginConfig.getStringList(Constants.CONFIG_PROJECT_RULES_ADDITIONAL_CR_APPROVERS));
 
-        return new ProjectRules(enabled, commitTemplate, Arrays.asList(skipTemplateValidationFor),
+        return new ProjectRules(enabled, commitTemplate, Arrays.asList(skipTemplateValidationForAuthors),
+                Arrays.asList(skipTemplateValidationForCommitters),
                 Arrays.asList(additionalCRApprovalConditions),
                 Arrays.asList(additionalCodeReviewApprovers));
     }

@@ -10,7 +10,8 @@ public class Constants {
     public static final String CONFIG_PROJECT_CONFIG_PLUGIN_SUB_SECTION = "commit-validator";
     public static final String CONFIG_PROJECT_RULES_BRANCH = "branch";
     public static final String CONFIG_PROJECT_RULES_COMMIT_TEMPLATE = "commitTemplate";
-    public static final String CONFIG_PROJECT_RULES_SKIP_TEMPLATE_VALIDATION = "skipTemplateValidationFor";
+    public static final String CONFIG_PROJECT_RULES_SKIP_TEMPLATE_VALIDATION_AUTHOR = "skipTemplateValidationForAuthors";
+    public static final String CONFIG_PROJECT_RULES_SKIP_TEMPLATE_VALIDATION_COMMITTER = "skipTemplateValidationForCommitters";
     public static final String CONFIG_PROJECT_RULES_ADDITIONAL_CR_APPROVAL_IF = "requiresAdditionalCodeReviewApprovalIf";
     public static final String CONFIG_PROJECT_RULES_ADDITIONAL_CR_APPROVERS = "additionalCodeReviewApprovers";
     public static final String CONFIG_ENDPOINT_URL = "url";
