@@ -191,10 +191,14 @@ public class CommitValidatorConfig {
         String commitTemplate = cfg.getGlobalPluginConfig(Constants.CONFIG_FILENAME_WITHOUT_EXTN).getString(
                 Constants.CONFIG_SECTION_PROJECT_RULES, projectName,
                 Constants.CONFIG_PROJECT_RULES_COMMIT_TEMPLATE);
-        String[] skipTemplateValidationFor = ArrayUtils.nullToEmpty(
+        String[] skipTemplateValidationForAuthors = ArrayUtils.nullToEmpty(
                 cfg.getGlobalPluginConfig(Constants.CONFIG_FILENAME_WITHOUT_EXTN).getStringList(
                         Constants.CONFIG_SECTION_PROJECT_RULES, projectName,
-                        Constants.CONFIG_PROJECT_RULES_SKIP_TEMPLATE_VALIDATION));
+                        Constants.CONFIG_PROJECT_RULES_SKIP_TEMPLATE_VALIDATION_AUTHOR));
+        String[] skipTemplateValidationForCommitters = ArrayUtils.nullToEmpty(
+                cfg.getGlobalPluginConfig(Constants.CONFIG_FILENAME_WITHOUT_EXTN).getStringList(
+                        Constants.CONFIG_SECTION_PROJECT_RULES, projectName,
+                        Constants.CONFIG_PROJECT_RULES_SKIP_TEMPLATE_VALIDATION_COMMITTER));
         String[] additionalCRApprovalConditions = ArrayUtils.nullToEmpty(
                 cfg.getGlobalPluginConfig(Constants.CONFIG_FILENAME_WITHOUT_EXTN).getStringList(
                         Constants.CONFIG_SECTION_PROJECT_RULES, projectName,
@@ -204,7 +208,8 @@ public class CommitValidatorConfig {
                         Constants.CONFIG_SECTION_PROJECT_RULES, projectName,
                         Constants.CONFIG_PROJECT_RULES_ADDITIONAL_CR_APPROVERS));
 
-        return new ProjectRules(enabled, commitTemplate, Arrays.asList(skipTemplateValidationFor),
+        return new ProjectRules(enabled, commitTemplate, Arrays.asList(skipTemplateValidationForAuthors),
+                Arrays.asList(skipTemplateValidationForCommitters),
                 Arrays.asList(additionalCRApprovalConditions),
                 Arrays.asList(additionalCodeReviewApprovers));
     }
